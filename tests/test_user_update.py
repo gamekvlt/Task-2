@@ -1,48 +1,94 @@
 from __future__ import annotations
 
 import uuid
-
 import allure
-import pytest
 
 from stellar_burgers_api import endpoints as ep
+from stellar_burgers_api.data import unique_user_payload
+from stellar_burgers_api.helpers import auth_header
 
 
-def _new_value(field: str) -> str:
-    u = uuid.uuid4().hex
-    if field == "email":
-        return f"upd_{u}@example.com"
-    if field == "password":
-        return f"newpass_{u}"
-    return f"NewName_{u[:8]}"
+def _new_email() -> str:
+    return f"upd_{uuid.uuid4().hex}@example.com"
+
+
+def _new_password() -> str:
+    return f"newpass_{uuid.uuid4().hex}"
+
+
+def _new_name() -> str:
+    return f"NewName_{uuid.uuid4().hex[:8]}"
+
+
+def _register_user(api, user_cleanup):
+    payload = unique_user_payload()
+    with allure.step("PRE: POST /api/auth/register - создаём пользователя"):
+        resp = api.post(ep.REGISTER, json=payload)
+    token = resp.json.get("accessToken") if resp.json else None
+    user_cleanup(token)
+    return token
 
 
 @allure.feature("User")
 @allure.story("Update user data")
 class TestUserUpdate:
-    @allure.title("Обновление данных пользователя с авторизацией")
-    @pytest.mark.parametrize("field", ["email", "password", "name"])
-    def test_update_user_with_authorization(self, api, registered_user, field):
-        new_val = _new_value(field)
-        headers = {"Authorization": registered_user["access_token"]}
-        payload = {field: new_val}
+    @allure.title("Обновление email с авторизацией")
+    def test_update_email_with_authorization(self, api, user_cleanup):
+        token = _register_user(api, user_cleanup)
+        new_val = _new_email()
 
-        resp = api.patch(ep.USER, headers=headers, json=payload)
+        with allure.step("PATCH /api/auth/user - обновляем email"):
+            resp = api.patch(ep.USER, headers=auth_header(token), json={"email": new_val})
+
+        assert resp.status_code == 200
+        assert resp.json.get("success") is True
+        assert resp.json.get("user", {}).get("email") == new_val
+
+    @allure.title("Обновление name с авторизацией")
+    def test_update_name_with_authorization(self, api, user_cleanup):
+        token = _register_user(api, user_cleanup)
+        new_val = _new_name()
+
+        with allure.step("PATCH /api/auth/user - обновляем name"):
+            resp = api.patch(ep.USER, headers=auth_header(token), json={"name": new_val})
+
+        assert resp.status_code == 200
+        assert resp.json.get("success") is True
+        assert resp.json.get("user", {}).get("name") == new_val
+
+    @allure.title("Обновление password с авторизацией")
+    def test_update_password_with_authorization(self, api, user_cleanup):
+        token = _register_user(api, user_cleanup)
+        new_val = _new_password()
+
+        with allure.step("PATCH /api/auth/user - обновляем password"):
+            resp = api.patch(ep.USER, headers=auth_header(token), json={"password": new_val})
 
         assert resp.status_code == 200
         assert resp.json.get("success") is True
 
-        # API возвращает обновлённые email/name, пароль в ответе не приходит
-        if field in ("email", "name"):
-            assert resp.json.get("user", {}).get(field) == new_val
+    @allure.title("Обновление email без авторизации возвращает 401")
+    def test_update_email_without_authorization(self, api):
+        with allure.step("PATCH /api/auth/user - без токена"):
+            resp = api.patch(ep.USER, json={"email": _new_email()})
 
-    @allure.title("Обновление данных пользователя без авторизации возвращает 401")
-    @pytest.mark.parametrize("field", ["email", "password", "name"])
-    def test_update_user_without_authorization(self, api, field):
-        new_val = _new_value(field)
-        payload = {field: new_val}
+        assert resp.status_code == 401
+        assert resp.json.get("success") is False
+        assert resp.json.get("message") == "You should be authorised"
 
-        resp = api.patch(ep.USER, json=payload)
+    @allure.title("Обновление name без авторизации возвращает 401")
+    def test_update_name_without_authorization(self, api):
+        with allure.step("PATCH /api/auth/user - без токена"):
+            resp = api.patch(ep.USER, json={"name": _new_name()})
+
+        assert resp.status_code == 401
+        assert resp.json.get("success") is False
+        assert resp.json.get("message") == "You should be authorised"
+
+    @allure.title("Обновление password без авторизации возвращает 401")
+    def test_update_password_without_authorization(self, api):
+        with allure.step("PATCH /api/auth/user - без токена"):
+            resp = api.patch(ep.USER, json={"password": _new_password()})
 
         assert resp.status_code == 401
         assert resp.json.get("success") is False
