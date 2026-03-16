@@ -3,21 +3,8 @@ from __future__ import annotations
 import allure
 
 from stellar_burgers_api import endpoints as ep
-from stellar_burgers_api.test_credentials import TEST_USER_EMAIL, TEST_USER_PASSWORD
 from stellar_burgers_api.helpers import auth_header
-
-
-def _login_and_token(api):
-    with allure.step("PRE: POST /api/auth/login - получаем токен"):
-        resp = api.post(ep.LOGIN, json={"email": TEST_USER_EMAIL, "password": TEST_USER_PASSWORD})
-    return resp.json.get("accessToken") if resp.json else None
-
-
-def _get_ingredient_ids(api):
-    with allure.step("PRE: GET /api/ingredients - получаем ингредиенты"):
-        resp = api.get(ep.INGREDIENTS)
-    data = (resp.json or {}).get("data") or []
-    return [i["_id"] for i in data[:3]]
+from stellar_burgers_api.test_steps import login_and_get_token, get_ingredient_ids
 
 
 @allure.feature("Orders")
@@ -25,8 +12,8 @@ def _get_ingredient_ids(api):
 class TestOrderCreate:
     @allure.title("Создание заказа с авторизацией")
     def test_create_order_with_auth(self, api):
-        token = _login_and_token(api)
-        ingredient_ids = _get_ingredient_ids(api)
+        token = login_and_get_token(api)
+        ingredient_ids = get_ingredient_ids(api)
 
         with allure.step("POST /api/orders - создаём заказ"):
             resp = api.post(ep.ORDERS, headers=auth_header(token), json={"ingredients": ingredient_ids[:2]})
@@ -37,7 +24,7 @@ class TestOrderCreate:
 
     @allure.title("Создание заказа без авторизации")
     def test_create_order_without_auth(self, api):
-        ingredient_ids = _get_ingredient_ids(api)
+        ingredient_ids = get_ingredient_ids(api)
 
         with allure.step("POST /api/orders - создаём заказ без токена"):
             resp = api.post(ep.ORDERS, json={"ingredients": ingredient_ids[:2]})
